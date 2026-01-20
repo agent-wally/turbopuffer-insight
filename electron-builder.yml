@@ -33,7 +33,7 @@ mac:
     - zip
   hardenedRuntime: true
   gatekeeperAssess: false
-  notarize: false
+afterSign: build/notarize.js
 dmg:
   artifactName: ${name}-${version}-mac.${ext}
   contents:
