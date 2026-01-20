@@ -1,0 +1,64 @@
+appId: com.turbopuffer.insight
+productName: Turbopuffer Insight
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+win:
+  executableName: turbopuffer-insight
+  icon: build/icon.ico
+  target:
+    - nsis
+    - portable
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}-mac.${ext}
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+linux:
+  icon: build/icons
+  target:
+    - AppImage
+    - deb
+  maintainer: Turbopuffer Insight Contributors
+  category: Development
+  desktop:
+    StartupWMClass: turbopuffer-insight
+appImage:
+  artifactName: ${name}-${version}-linux.${ext}
+deb:
+  artifactName: ${name}-${version}-linux.${ext}
+npmRebuild: false
+publish:
+  provider: github
+  owner: agent-wally
+  repo: turbopuffer-insight
+  releaseType: release
