@@ -11,11 +11,24 @@ import {
   Copy,
   Check
 } from 'lucide-react'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  ColumnDef,
+  flexRender,
+  ColumnResizeMode
+} from '@tanstack/react-table'
 import { Button } from '@renderer/components/ui/button'
 import { Badge } from '@renderer/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@renderer/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@renderer/components/ui/card'
 import { Skeleton } from '@renderer/components/ui/skeleton'
 import { Separator } from '@renderer/components/ui/separator'
 import { ScrollArea, ScrollBar } from '@renderer/components/ui/scroll-area'
@@ -303,9 +316,7 @@ export function NamespacePage() {
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="text-sm px-2 min-w-[3rem] text-center">
-                    {currentPage}
-                  </span>
+                  <span className="text-sm px-2 min-w-12 text-center">{currentPage}</span>
                   <Button
                     variant="outline"
                     size="icon"
@@ -375,7 +386,11 @@ export function NamespacePage() {
                       // Collapse vectors by default - show placeholder
                       const collapsed: Record<string, unknown> = {}
                       for (const [key, value] of Object.entries(row)) {
-                        if (Array.isArray(value) && value.length > 10 && typeof value[0] === 'number') {
+                        if (
+                          Array.isArray(value) &&
+                          value.length > 10 &&
+                          typeof value[0] === 'number'
+                        ) {
                           collapsed[key] = `[Vector: ${value.length} dimensions]`
                         } else {
                           collapsed[key] = value
@@ -415,72 +430,9 @@ export function NamespacePage() {
                     </Card>
                   ))}
                 </div>
-              ) : (() => {
-                // Extract all unique attribute keys (excluding system fields)
-                const systemFields = ['id', '$dist', 'vector']
-                const attrKeys = Array.from(
-                  new Set(
-                    documentsData.rows.flatMap((row) =>
-                      Object.keys(row).filter((k) => !systemFields.includes(k))
-                    )
-                  )
-                ).sort()
-                const hasDistance = documentsData.rows[0]?.$dist !== undefined
-
-                return (
-                  <table className="w-max min-w-full text-sm">
-                    <thead className="bg-muted/50 sticky top-0">
-                      <tr>
-                        <th className="text-left p-3 font-medium whitespace-nowrap">ID</th>
-                        {hasDistance && (
-                          <th className="text-left p-3 font-medium whitespace-nowrap">Distance</th>
-                        )}
-                        {attrKeys.map((key) => (
-                          <th key={key} className="text-left p-3 font-medium whitespace-nowrap">
-                            {key}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documentsData.rows.map((row, index) => (
-                        <tr key={row.id?.toString() || index} className="border-t hover:bg-muted/30">
-                          <td className="p-3 font-mono text-xs whitespace-nowrap">
-                            {row.id?.toString()}
-                          </td>
-                          {hasDistance && (
-                            <td className="p-3 font-mono text-xs whitespace-nowrap">
-                              {row.$dist?.toFixed(4)}
-                            </td>
-                          )}
-                          {attrKeys.map((key) => {
-                            const value = row[key]
-                            let display: string
-                            if (value === undefined || value === null) {
-                              display = '—'
-                            } else if (Array.isArray(value)) {
-                              display = `[${value.length} items]`
-                            } else if (typeof value === 'object') {
-                              display = JSON.stringify(value)
-                            } else {
-                              display = String(value)
-                            }
-                            return (
-                              <td
-                                key={key}
-                                className="p-3 font-mono text-xs max-w-xs truncate"
-                                title={typeof value === 'string' ? value : JSON.stringify(value)}
-                              >
-                                {display}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )
-              })()}
+              ) : (
+                <ResizableTable data={documentsData.rows} />
+              )}
               <ScrollBar orientation="horizontal" />
             </ScrollArea>
           </div>
@@ -533,42 +485,45 @@ export function NamespacePage() {
                       }
 
                       const typeStr = stringify(schema.type) || 'unknown'
-                      const dimensions = typeof schema.dimensions === 'number' ? schema.dimensions : null
+                      const dimensions =
+                        typeof schema.dimensions === 'number' ? schema.dimensions : null
                       const filterable = !!schema.filterable
                       const fullTextSearch = !!schema.full_text_search
-                      const distanceMetric = schema.distance_metric ? stringify(schema.distance_metric) : null
+                      const distanceMetric = schema.distance_metric
+                        ? stringify(schema.distance_metric)
+                        : null
 
                       return (
-                      <tr key={field} className="border-t">
-                        <td className="p-3 font-mono">{field}</td>
-                        <td className="p-3">
-                          <Badge variant="outline">{typeStr}</Badge>
-                          {dimensions !== null && (
-                            <span className="ml-2 text-muted-foreground text-xs">
-                              ({dimensions}d)
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex flex-wrap gap-1">
-                            {filterable && (
-                              <Badge variant="secondary" className="text-xs">
-                                filterable
-                              </Badge>
+                        <tr key={field} className="border-t">
+                          <td className="p-3 font-mono">{field}</td>
+                          <td className="p-3">
+                            <Badge variant="outline">{typeStr}</Badge>
+                            {dimensions !== null && (
+                              <span className="ml-2 text-muted-foreground text-xs">
+                                ({dimensions}d)
+                              </span>
                             )}
-                            {fullTextSearch && (
-                              <Badge variant="secondary" className="text-xs">
-                                FTS
-                              </Badge>
-                            )}
-                            {distanceMetric && (
-                              <Badge variant="secondary" className="text-xs">
-                                {distanceMetric}
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex flex-wrap gap-1">
+                              {filterable && (
+                                <Badge variant="secondary" className="text-xs">
+                                  filterable
+                                </Badge>
+                              )}
+                              {fullTextSearch && (
+                                <Badge variant="secondary" className="text-xs">
+                                  FTS
+                                </Badge>
+                              )}
+                              {distanceMetric && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {distanceMetric}
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )
                     })}
                   </tbody>
@@ -618,7 +573,11 @@ export function NamespacePage() {
                   <CardHeader className="pb-2">
                     <CardDescription>Encryption</CardDescription>
                     <CardTitle className="text-2xl capitalize">
-                      {'sse' in metadata.encryption ? 'SSE' : 'cmek' in metadata.encryption ? 'CMEK' : 'Unknown'}
+                      {'sse' in metadata.encryption
+                        ? 'SSE'
+                        : 'cmek' in metadata.encryption
+                          ? 'CMEK'
+                          : 'Unknown'}
                     </CardTitle>
                   </CardHeader>
                 </Card>
@@ -645,6 +604,160 @@ export function NamespacePage() {
           )}
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+// Resizable Table Component
+function ResizableTable({ data }: { data: Record<string, unknown>[] }) {
+  const [columnResizeMode] = useState<ColumnResizeMode>('onChange')
+
+  // Calculate max initial column width (80% of viewport width)
+  const maxInitialWidth = useMemo(() => {
+    const viewportWidth = window.innerWidth
+    const maxWidth = Math.floor(viewportWidth * 0.8)
+    console.log('Viewport width:', viewportWidth, 'Max initial column width:', maxWidth)
+    return maxWidth
+  }, [])
+
+  // Extract all unique attribute keys (excluding system fields)
+  const systemFields = useMemo(() => ['id', '$dist', 'vector'], [])
+  const attrKeys = useMemo(
+    () =>
+      Array.from(
+        new Set(data.flatMap((row) => Object.keys(row).filter((k) => !systemFields.includes(k))))
+      ).sort(),
+    [data, systemFields]
+  )
+  const hasDistance = data[0]?.$dist !== undefined
+
+  // Define columns dynamically
+  const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
+    const cols: ColumnDef<Record<string, unknown>>[] = [
+      {
+        accessorKey: 'id',
+        header: 'ID',
+        cell: (info) => (
+          <div className="font-mono text-xs truncate" title={info.getValue()?.toString()}>
+            {info.getValue()?.toString()}
+          </div>
+        ),
+        size: Math.min(150, maxInitialWidth),
+        minSize: 50,
+        enableResizing: true
+      }
+    ]
+
+    if (hasDistance) {
+      cols.push({
+        accessorKey: '$dist',
+        header: 'Distance',
+        cell: (info) => {
+          const val = info.getValue() as number | undefined
+          return <div className="font-mono text-xs whitespace-nowrap">{val?.toFixed(4)}</div>
+        },
+        size: Math.min(120, maxInitialWidth),
+        minSize: 50,
+        enableResizing: true
+      })
+    }
+
+    attrKeys.forEach((key) => {
+      cols.push({
+        accessorKey: key,
+        header: key,
+        cell: (info) => {
+          const value = info.getValue()
+          let display: string
+          if (value === undefined || value === null) {
+            display = '—'
+          } else if (Array.isArray(value)) {
+            display = `[${value.length} items]`
+          } else if (typeof value === 'object') {
+            display = JSON.stringify(value)
+          } else {
+            display = String(value)
+          }
+          return (
+            <div
+              className="font-mono text-xs truncate"
+              title={typeof value === 'string' ? value : JSON.stringify(value)}
+            >
+              {display}
+            </div>
+          )
+        },
+        size: Math.min(200, maxInitialWidth),
+        minSize: 50,
+        enableResizing: true
+      })
+    })
+
+    return cols
+  }, [attrKeys, hasDistance, maxInitialWidth])
+
+  const table = useReactTable({
+    data,
+    columns,
+    columnResizeMode,
+    getCoreRowModel: getCoreRowModel(),
+    enableColumnResizing: true,
+    columnResizeDirection: 'ltr',
+    defaultColumn: {
+      minSize: 50,
+      size: Math.min(200, maxInitialWidth)
+    }
+  })
+
+  return (
+    <div className="w-max min-w-full">
+      <table className="text-sm border-collapse" style={{ width: table.getCenterTotalSize() }}>
+        <thead className="bg-muted/50 sticky top-0">
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <th
+                  key={header.id}
+                  className="text-left p-3 font-medium whitespace-nowrap relative border-r border-border/50 last:border-r-0"
+                  style={{ width: `${header.getSize()}px`, maxWidth: `${header.getSize()}px` }}
+                >
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                  {header.column.getCanResize() && (
+                    <div
+                      onMouseDown={header.getResizeHandler()}
+                      onTouchStart={header.getResizeHandler()}
+                      className={cn(
+                        'absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none',
+                        'hover:bg-primary/30',
+                        header.column.getIsResizing() && 'bg-primary'
+                      )}
+                      style={{ userSelect: 'none' }}
+                    />
+                  )}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {table.getRowModel().rows.map((row) => (
+            <tr key={row.id} className="border-t hover:bg-muted/30">
+              {row.getVisibleCells().map((cell) => (
+                <td
+                  key={cell.id}
+                  className="p-3 border-r border-border/20 last:border-r-0"
+                  style={{
+                    width: `${cell.column.getSize()}px`,
+                    maxWidth: `${cell.column.getSize()}px`
+                  }}
+                >
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
