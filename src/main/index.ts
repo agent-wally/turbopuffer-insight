@@ -70,9 +70,25 @@ function setupAutoUpdater(): void {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
 
+  // Enable detailed logging
+  autoUpdater.logger = console
+
+  console.log('[AutoUpdater] Initializing auto-updater')
+  console.log('[AutoUpdater] Current version:', app.getVersion())
+  console.log('[AutoUpdater] Is dev mode:', is.dev)
+  console.log('[AutoUpdater] Platform:', process.platform)
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for updates...')
+  })
+
   autoUpdater.on('update-available', (info) => {
     console.log('[AutoUpdater] Update available:', info.version)
     mainWindow?.webContents.send('update-available', info)
+  })
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[AutoUpdater] Update not available. Current version is latest:', info.version)
   })
 
   autoUpdater.on('update-downloaded', (info) => {
@@ -84,11 +100,18 @@ function setupAutoUpdater(): void {
     console.error('[AutoUpdater] Error:', error)
   })
 
+  autoUpdater.on('download-progress', (progressObj) => {
+    console.log('[AutoUpdater] Download progress:', progressObj.percent)
+  })
+
   // Check for updates (don't check in development)
   if (!is.dev) {
+    console.log('[AutoUpdater] Starting update check...')
     autoUpdater.checkForUpdates().catch((err) => {
-      console.log('[AutoUpdater] Check failed:', err.message)
+      console.error('[AutoUpdater] Check failed:', err)
     })
+  } else {
+    console.log('[AutoUpdater] Skipping update check (development mode)')
   }
 }
 
@@ -104,7 +127,7 @@ function setupCSP(): void {
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: https:",
           "font-src 'self' data:",
-          "connect-src 'self' https://api.turbopuffer.com https://*.turbopuffer.com",
+          "connect-src 'self' https://api.turbopuffer.com https://*.turbopuffer.com https://github.com https://*.github.com https://objects.githubusercontent.com",
           "frame-src 'none'"
         ].join('; ')
       }
