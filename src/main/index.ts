@@ -220,6 +220,8 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+    // Set default zoom level (0.8 = 80%, equivalent to zooming out twice)
+    mainWindow?.webContents.setZoomFactor(0.85)
   })
 
   mainWindow.on('closed', () => {
