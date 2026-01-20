@@ -44,14 +44,13 @@ dmg:
       type: link
       path: /Applications
 linux:
-  icon: build/icons
+  icon: build/icon.png
   target:
     - AppImage
     - deb
   maintainer: Turbopuffer Insight Contributors
   category: Development
-  desktop:
-    StartupWMClass: turbopuffer-insight
+  executableName: turbopuffer-insight
 appImage:
   artifactName: ${name}-${version}-linux.${ext}
 deb:
