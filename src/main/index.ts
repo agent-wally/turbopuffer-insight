@@ -12,9 +12,56 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 
 // Store for encrypted API keys (in memory during session)
 const apiKeyStore = new Map<string, string>()
+
+// Path to persistent storage for encrypted API keys
+const getApiKeysFilePath = (): string => {
+  const userDataPath = app.getPath('userData')
+  return join(userDataPath, 'api-keys.json')
+}
+
+// Load encrypted API keys from disk
+const loadApiKeysFromDisk = (): void => {
+  try {
+    const filePath = getApiKeysFilePath()
+    if (existsSync(filePath)) {
+      const data = readFileSync(filePath, 'utf-8')
+      const keys = JSON.parse(data)
+      Object.entries(keys).forEach(([profileId, encryptedKey]) => {
+        apiKeyStore.set(profileId, encryptedKey as string)
+      })
+      if (is.dev) {
+        console.log(`[Main] Loaded ${apiKeyStore.size} API keys from disk`)
+      }
+    }
+  } catch (error) {
+    console.error('[Main] Failed to load API keys from disk:', error)
+  }
+}
+
+// Save encrypted API keys to disk
+const saveApiKeysToDisk = (): void => {
+  try {
+    const filePath = getApiKeysFilePath()
+    const userDataPath = app.getPath('userData')
+
+    // Ensure directory exists
+    if (!existsSync(userDataPath)) {
+      mkdirSync(userDataPath, { recursive: true })
+    }
+
+    const keys = Object.fromEntries(apiKeyStore)
+    writeFileSync(filePath, JSON.stringify(keys, null, 2), 'utf-8')
+    if (is.dev) {
+      console.log(`[Main] Saved ${apiKeyStore.size} API keys to disk`)
+    }
+  } catch (error) {
+    console.error('[Main] Failed to save API keys to disk:', error)
+  }
+}
 
 let mainWindow: BrowserWindow | null = null
 
@@ -295,6 +342,10 @@ function setupIpcHandlers(): void {
         // Fallback to plain storage (less secure)
         apiKeyStore.set(profileId, apiKey)
       }
+
+      // Persist to disk
+      saveApiKeysToDisk()
+
       return { success: true }
     } catch (error) {
       return { success: false, error: String(error) }
@@ -326,6 +377,8 @@ function setupIpcHandlers(): void {
   ipcMain.handle('remove-api-key', async (_event, profileId: string) => {
     if (profileId && typeof profileId === 'string') {
       apiKeyStore.delete(profileId)
+      // Persist to disk
+      saveApiKeysToDisk()
     }
     return { success: true }
   })
@@ -454,6 +507,9 @@ function setupIpcHandlers(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.turbopuffer.insight')
+
+  // Load encrypted API keys from disk
+  loadApiKeysFromDisk()
 
   // Setup security
   setupCSP()
