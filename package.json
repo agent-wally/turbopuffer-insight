@@ -1,6 +1,6 @@
 {
   "name": "turbopuffer-insight",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Desktop application for browsing and managing Turbopuffer vector database namespaces",
   "main": "./out/main/index.js",
   "author": "Wally",
