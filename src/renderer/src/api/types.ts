@@ -72,18 +72,18 @@ export interface VectorRankBy {
   distance_metric?: 'cosine_distance' | 'euclidean_squared'
 }
 
-export interface BM25Query {
-  query: string
-  field: string
+export interface BM25Options {
+  last_as_prefix?: boolean
 }
 
 // Rank by attribute: [attributeName, 'asc' | 'desc']
 // Rank by vector: ['vector', { vector: number[], distance_metric?: string }]
-// Rank by BM25: ['bm25', { query: string, field: string }]
+// Rank by BM25: [field_name, 'BM25', query] or [field_name, 'BM25', query, { last_as_prefix: true }]
 export type RankBy =
   | [string, 'asc' | 'desc']
   | ['vector', VectorRankBy]
-  | ['bm25', BM25Query]
+  | [string, 'BM25', string]
+  | [string, 'BM25', string, BM25Options]
 
 export interface QueryRequest {
   rank_by?: RankBy

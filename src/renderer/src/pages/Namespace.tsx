@@ -11,7 +11,7 @@ import {
   Copy,
   Check
 } from 'lucide-react'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, JSX } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -39,13 +39,14 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
-import { useNamespaceMetadata, useQueryDocuments } from '@renderer/api'
+import { useNamespaceMetadata, useQueryDocuments, Filter } from '@renderer/api'
+import { FilterPanel, FilterRow, FullTextSearch } from '@renderer/components/FilterPanel'
 import { usePreferencesStore } from '@renderer/stores'
 import { cn, formatBytes, formatNumber, formatDate } from '@renderer/lib/utils'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200]
 
-export function NamespacePage() {
+export function NamespacePage(): JSX.Element {
   const { namespaceId: encodedNamespaceId } = useParams<{ namespaceId: string }>()
   // Decode the namespace ID from URL (it may contain special characters)
   const namespaceId = encodedNamespaceId ? decodeURIComponent(encodedNamespaceId) : undefined
@@ -59,6 +60,11 @@ export function NamespacePage() {
   const [pageHistory, setPageHistory] = useState<(string | number | undefined)[]>([])
   const [currentPage, setCurrentPage] = useState(1)
 
+  // Filter and search state
+  const [filters, setFilters] = useState<FilterRow[]>([])
+  const [fullTextSearch, setFullTextSearch] = useState<FullTextSearch | null>(null)
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false)
+
   const {
     data: metadata,
     isLoading: isLoadingMetadata,
@@ -67,16 +73,105 @@ export function NamespacePage() {
     isRefetching: isRefetchingMetadata
   } = useNamespaceMetadata(namespaceId || '')
 
-  // Build query with pagination filter
-  // Turbopuffer filter format: ["field", "Operator", value] (single expression, not array)
-  const queryRequest = {
-    rank_by: ['id', 'asc'] as [string, 'asc' | 'desc'],
-    limit: pageSize,
-    include_attributes: true as const,
-    ...(afterId !== undefined
-      ? { filters: ['id', 'Gt', afterId] as [string, 'Gt', string | number] }
-      : {})
-  }
+  // Parse filter value based on field type from schema
+  const parseFilterValue = useCallback(
+    (
+      field: string,
+      operator: string,
+      rawValue: string
+    ): string | number | boolean | (string | number)[] => {
+      const fieldSchema = metadata?.schema?.[field]
+      const fieldType = fieldSchema && 'type' in fieldSchema ? fieldSchema.type : 'string'
+
+      // Handle In/NotIn operators - parse as comma-separated array
+      if (operator === 'In' || operator === 'NotIn') {
+        const values = rawValue
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean)
+        if (fieldType === 'int' || fieldType === 'uint' || fieldType === 'float') {
+          return values.map((v) => Number(v))
+        }
+        return values
+      }
+
+      // Handle boolean
+      if (fieldType === 'bool') {
+        return rawValue.toLowerCase() === 'true'
+      }
+
+      // Handle numeric types
+      if (fieldType === 'int' || fieldType === 'uint' || fieldType === 'float') {
+        return Number(rawValue)
+      }
+
+      // Default to string
+      return rawValue
+    },
+    [metadata?.schema]
+  )
+
+  // Build combined filters (user filters + pagination filter for non-BM25 queries)
+  const buildFilters = useMemo((): Filter | undefined => {
+    // Get active user filters (non-empty values)
+    const activeUserFilters = filters.filter((f) => f.value.trim() !== '')
+
+    // Convert user filters to API format
+    const userFilterExpressions: Filter[] = activeUserFilters.map(
+      (f) => [f.field, f.operator, parseFilterValue(f.field, f.operator, f.value)] as Filter
+    )
+
+    // Create pagination filter if needed (only for non-BM25 queries)
+    const hasBM25Search = fullTextSearch && fullTextSearch.query.trim() !== ''
+    const paginationFilter: Filter | undefined =
+      !hasBM25Search && afterId !== undefined ? ['id', 'Gt', afterId] : undefined
+
+    // Combine filters
+    if (userFilterExpressions.length === 0 && !paginationFilter) {
+      return undefined
+    }
+
+    if (userFilterExpressions.length === 0 && paginationFilter) {
+      return paginationFilter
+    }
+
+    if (userFilterExpressions.length === 1 && !paginationFilter) {
+      return userFilterExpressions[0]
+    }
+
+    // Multiple filters or single filter + pagination: use And
+    const allFilters = [...userFilterExpressions]
+    if (paginationFilter) {
+      allFilters.push(paginationFilter)
+    }
+
+    return ['And', ...allFilters] as Filter
+  }, [filters, afterId, parseFilterValue, fullTextSearch])
+
+  // Check if we have an active BM25 search
+  const hasBM25Search = fullTextSearch && fullTextSearch.query.trim() !== ''
+
+  // Build query request - switches between attribute-based and BM25 ranking
+  const queryRequest = useMemo(() => {
+    if (hasBM25Search) {
+      // BM25 search mode - rank by relevance
+      // Turbopuffer format: [field_name, "BM25", search_query]
+      return {
+        rank_by: [fullTextSearch.field, 'BM25', fullTextSearch.query] as [string, 'BM25', string],
+        top_k: pageSize,
+        include_attributes: true as const,
+        ...(buildFilters ? { filters: buildFilters } : {})
+      }
+    }
+
+    // Standard mode - rank by id
+    return {
+      rank_by: ['id', 'asc'] as [string, 'asc' | 'desc'],
+      limit: pageSize,
+      include_attributes: true as const,
+      ...(buildFilters ? { filters: buildFilters } : {})
+    }
+  }, [pageSize, buildFilters, hasBM25Search, fullTextSearch])
 
   // Query documents with pagination
   const {
@@ -95,23 +190,42 @@ export function NamespacePage() {
   // Check if there might be more results (if we got a full page)
   const hasMoreResults = documentsData?.rows.length === pageSize
 
-  // Reset pagination when namespace changes
+  // Reset pagination and filters when namespace changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAfterId(undefined)
     setPageHistory([])
     setCurrentPage(1)
+    setFilters([])
+    setFullTextSearch(null)
   }, [namespaceId])
 
   // Reset pagination when page size changes
-  const handlePageSizeChange = (newSize: string) => {
+  const handlePageSizeChange = (newSize: string): void => {
     setPageSize(Number(newSize))
     setAfterId(undefined)
     setPageHistory([])
     setCurrentPage(1)
   }
 
+  // Handle filter changes - reset pagination when filters change
+  const handleFiltersChange = useCallback((newFilters: FilterRow[]): void => {
+    setFilters(newFilters)
+    setAfterId(undefined)
+    setPageHistory([])
+    setCurrentPage(1)
+  }, [])
+
+  // Handle full-text search changes - reset pagination
+  const handleFullTextSearchChange = useCallback((search: FullTextSearch | null): void => {
+    setFullTextSearch(search)
+    setAfterId(undefined)
+    setPageHistory([])
+    setCurrentPage(1)
+  }, [])
+
   // Navigate to next page
-  const goToNextPage = () => {
+  const goToNextPage = (): void => {
     if (lastId !== undefined && hasMoreResults) {
       setPageHistory((prev) => [...prev, afterId])
       setAfterId(lastId)
@@ -120,7 +234,7 @@ export function NamespacePage() {
   }
 
   // Navigate to previous page
-  const goToPrevPage = () => {
+  const goToPrevPage = (): void => {
     if (pageHistory.length > 0) {
       const newHistory = [...pageHistory]
       const prevAfterId = newHistory.pop()
@@ -131,7 +245,7 @@ export function NamespacePage() {
   }
 
   // Go to first page
-  const goToFirstPage = () => {
+  const goToFirstPage = (): void => {
     setAfterId(undefined)
     setPageHistory([])
     setCurrentPage(1)
@@ -158,7 +272,7 @@ export function NamespacePage() {
     }
   }, [namespaceId, metadata, addRecentNamespace])
 
-  const copySchema = () => {
+  const copySchema = (): void => {
     if (metadata?.schema) {
       navigator.clipboard.writeText(JSON.stringify(metadata.schema, null, 2))
       setCopiedSchema(true)
@@ -166,7 +280,7 @@ export function NamespacePage() {
     }
   }
 
-  const exportDocuments = () => {
+  const exportDocuments = (): void => {
     if (!documentsData?.rows.length) return
 
     const dataStr = JSON.stringify(documentsData.rows, null, 2)
@@ -273,6 +387,17 @@ export function NamespacePage() {
 
         <TabsContent value="documents" className="flex-1 overflow-hidden m-0 p-4">
           <div className="h-full flex flex-col">
+            {/* Filter Panel */}
+            <FilterPanel
+              schema={metadata?.schema}
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              fullTextSearch={fullTextSearch}
+              onFullTextSearchChange={handleFullTextSearchChange}
+              isOpen={isFilterPanelOpen}
+              onOpenChange={setIsFilterPanelOpen}
+            />
+
             {/* Toolbar */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-4">
@@ -609,7 +734,7 @@ export function NamespacePage() {
 }
 
 // Resizable Table Component
-function ResizableTable({ data }: { data: Record<string, unknown>[] }) {
+function ResizableTable({ data }: { data: Record<string, unknown>[] }): JSX.Element | null {
   const [columnResizeMode] = useState<ColumnResizeMode>('onChange')
 
   // Calculate max initial column width (80% of viewport width)
