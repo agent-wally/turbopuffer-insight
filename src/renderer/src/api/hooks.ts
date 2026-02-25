@@ -140,6 +140,27 @@ export function useTestConnection() {
   })
 }
 
+// Delete namespace
+export function useDeleteNamespace() {
+  const queryClient = useQueryClient()
+  const { apiKey, baseUrl } = useApiCredentials()
+
+  return useMutation({
+    mutationFn: async (namespaceId: string) => {
+      const result = await window.api.deleteNamespace({ apiKey, baseUrl, namespaceId })
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete namespace')
+      }
+
+      return result.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['namespaces'] })
+    }
+  })
+}
+
 // Prefetch namespace metadata
 export function usePrefetchNamespaceMetadata() {
   const queryClient = useQueryClient()

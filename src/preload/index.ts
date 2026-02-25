@@ -18,6 +18,9 @@ const api = {
   query: (params: { apiKey: string; baseUrl: string; namespaceId: string; query: object }) =>
     ipcRenderer.invoke('api:query', params),
 
+  deleteNamespace: (params: { apiKey: string; baseUrl: string; namespaceId: string }) =>
+    ipcRenderer.invoke('api:delete-namespace', params),
+
   testConnection: (params: { apiKey: string; baseUrl: string }) =>
     ipcRenderer.invoke('api:test-connection', params),
 

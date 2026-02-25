@@ -30,6 +30,12 @@ interface TurbopufferApi {
     query: object
   }) => Promise<ApiResponse>
 
+  deleteNamespace: (params: {
+    apiKey: string
+    baseUrl: string
+    namespaceId: string
+  }) => Promise<ApiResponse>
+
   testConnection: (params: {
     apiKey: string
     baseUrl: string

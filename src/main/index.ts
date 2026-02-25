@@ -484,6 +484,25 @@ function setupIpcHandlers(): void {
     }
   )
 
+  // API: Delete namespace
+  ipcMain.handle(
+    'api:delete-namespace',
+    async (
+      _event,
+      { apiKey, baseUrl, namespaceId }: { apiKey: string; baseUrl: string; namespaceId: string }
+    ) => {
+      if (!namespaceId) {
+        return { success: false, error: 'Namespace ID required' }
+      }
+      return makeApiRequest(
+        `/v1/namespaces/${encodeURIComponent(namespaceId)}`,
+        'DELETE',
+        apiKey,
+        baseUrl
+      )
+    }
+  )
+
   // API: Test connection
   ipcMain.handle(
     'api:test-connection',

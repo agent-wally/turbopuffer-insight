@@ -12,7 +12,8 @@ import {
   RefreshCw,
   Plus,
   Settings,
-  GitBranch
+  GitBranch,
+  Trash2
 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -31,6 +32,13 @@ import {
 } from '@renderer/components/ui/popover'
 import { Label } from '@renderer/components/ui/label'
 import { Switch } from '@renderer/components/ui/switch'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from '@renderer/components/ui/context-menu'
+import { DeleteNamespaceDialog } from '@renderer/components/DeleteNamespaceDialog'
 import { cn } from '@renderer/lib/utils'
 import { useNamespaces, usePrefetchNamespaceMetadata, NamespaceListItem } from '@renderer/api'
 import { usePreferencesStore, useConnectionStore } from '@renderer/stores'
@@ -91,7 +99,8 @@ function TreeNodeComponent({
   toggleNode,
   location,
   navigate,
-  prefetchMetadata
+  prefetchMetadata,
+  onDeleteNamespace
 }: {
   node: NamespaceTreeNode
   depth: number
@@ -100,6 +109,7 @@ function TreeNodeComponent({
   location: { pathname: string }
   navigate: (path: string) => void
   prefetchMetadata: (id: string) => void
+  onDeleteNamespace: (namespaceId: string) => void
 }) {
   const isExpanded = expandedNodes.has(node.fullPath)
   const hasChildren = node.children.size > 0
@@ -107,64 +117,100 @@ function TreeNodeComponent({
   const encodedId = node.namespace ? encodeURIComponent(node.namespace.id) : ''
   const isActive = isLeaf && location.pathname === `/namespace/${encodedId}`
 
-  // If it's a leaf node (actual namespace), render as clickable item
+  const namespaceButton = (
+    <button
+      onClick={() => navigate(`/namespace/${encodedId}`)}
+      onMouseEnter={() => prefetchMetadata(node.namespace!.id)}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+        isActive
+          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+          : 'text-sidebar-foreground hover:bg-sidebar-accent'
+      )}
+      style={{ paddingLeft: `${depth * 12 + 8}px` }}
+    >
+      <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <span className="truncate">{node.name}</span>
+    </button>
+  )
+
+  // If it's a leaf node (actual namespace), render as clickable item with context menu
   if (isLeaf && !hasChildren) {
     return (
-      <button
-        onClick={() => navigate(`/namespace/${encodedId}`)}
-        onMouseEnter={() => prefetchMetadata(node.namespace!.id)}
-        className={cn(
-          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-          isActive
-            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-            : 'text-sidebar-foreground hover:bg-sidebar-accent'
-        )}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-      >
-        <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate">{node.name}</span>
-      </button>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{namespaceButton}</ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => onDeleteNamespace(node.namespace!.id)}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete namespace
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     )
   }
 
   // If it's a folder node (has children or is intermediate)
+  const folderButton = (
+    <button
+      onClick={() => {
+        if (hasChildren) {
+          toggleNode(node.fullPath)
+        }
+        // If this folder is also a namespace, navigate to it
+        if (isLeaf) {
+          navigate(`/namespace/${encodedId}`)
+        }
+      }}
+      onMouseEnter={() => isLeaf && prefetchMetadata(node.namespace!.id)}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+        isActive
+          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+          : 'text-sidebar-foreground hover:bg-sidebar-accent'
+      )}
+      style={{ paddingLeft: `${depth * 12 + 8}px` }}
+    >
+      {hasChildren ? (
+        isExpanded ? (
+          <ChevronDown className="h-4 w-4 shrink-0" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0" />
+        )
+      ) : (
+        <span className="w-4" />
+      )}
+      {isExpanded ? (
+        <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+      ) : (
+        <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+      <span className="truncate">{node.name}</span>
+    </button>
+  )
+
+  const wrappedFolderButton = isLeaf ? (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{folderButton}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem
+          className="text-destructive focus:text-destructive"
+          onClick={() => onDeleteNamespace(node.namespace!.id)}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete namespace
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  ) : (
+    folderButton
+  )
+
   return (
     <div>
-      <button
-        onClick={() => {
-          if (hasChildren) {
-            toggleNode(node.fullPath)
-          }
-          // If this folder is also a namespace, navigate to it
-          if (isLeaf) {
-            navigate(`/namespace/${encodedId}`)
-          }
-        }}
-        onMouseEnter={() => isLeaf && prefetchMetadata(node.namespace!.id)}
-        className={cn(
-          'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-          isActive
-            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-            : 'text-sidebar-foreground hover:bg-sidebar-accent'
-        )}
-        style={{ paddingLeft: `${depth * 12 + 8}px` }}
-      >
-        {hasChildren ? (
-          isExpanded ? (
-            <ChevronDown className="h-4 w-4 shrink-0" />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0" />
-          )
-        ) : (
-          <span className="w-4" />
-        )}
-        {isExpanded ? (
-          <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-        )}
-        <span className="truncate">{node.name}</span>
-      </button>
+      {wrappedFolderButton}
       {isExpanded && hasChildren && (
         <div>
           {Array.from(node.children.values())
@@ -179,6 +225,7 @@ function TreeNodeComponent({
                 location={location}
                 navigate={navigate}
                 prefetchMetadata={prefetchMetadata}
+                onDeleteNamespace={onDeleteNamespace}
               />
             ))}
         </div>
@@ -194,6 +241,8 @@ export function Sidebar() {
   const [expandedProfiles, setExpandedProfiles] = useState<Set<string>>(new Set(['active']))
   const [expandedTreeNodes, setExpandedTreeNodes] = useState<Set<string>>(new Set())
   const [isResizing, setIsResizing] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [namespaceToDelete, setNamespaceToDelete] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
   const {
@@ -284,6 +333,21 @@ export function Sidebar() {
       return next
     })
   }
+
+  const openDeleteDialog = useCallback((namespaceId: string) => {
+    setNamespaceToDelete(namespaceId)
+    setDeleteDialogOpen(true)
+  }, [])
+
+  const handleNamespaceDeleted = useCallback(() => {
+    if (namespaceToDelete) {
+      const encodedId = encodeURIComponent(namespaceToDelete)
+      if (location.pathname === `/namespace/${encodedId}`) {
+        navigate('/')
+      }
+    }
+    setNamespaceToDelete(null)
+  }, [namespaceToDelete, location.pathname, navigate])
 
   if (sidebarCollapsed) {
     return (
@@ -400,6 +464,7 @@ export function Sidebar() {
                             location={location}
                             navigate={navigate}
                             prefetchMetadata={prefetchMetadata}
+                            onDeleteNamespace={openDeleteDialog}
                           />
                         ))}
                       {hasNextPage && (
@@ -421,20 +486,32 @@ export function Sidebar() {
                         const encodedId = encodeURIComponent(ns.id)
                         const isActive = location.pathname === `/namespace/${encodedId}`
                         return (
-                          <button
-                            key={ns.id}
-                            onClick={() => navigate(`/namespace/${encodedId}`)}
-                            onMouseEnter={() => prefetchMetadata(ns.id)}
-                            className={cn(
-                              'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-                              isActive
-                                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                                : 'text-sidebar-foreground hover:bg-sidebar-accent'
-                            )}
-                          >
-                            <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{ns.id}</span>
-                          </button>
+                          <ContextMenu key={ns.id}>
+                            <ContextMenuTrigger asChild>
+                              <button
+                                onClick={() => navigate(`/namespace/${encodedId}`)}
+                                onMouseEnter={() => prefetchMetadata(ns.id)}
+                                className={cn(
+                                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+                                  isActive
+                                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                    : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                                )}
+                              >
+                                <FolderTree className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{ns.id}</span>
+                              </button>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => openDeleteDialog(ns.id)}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete namespace
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         )
                       })}
                       {hasNextPage && (
@@ -524,6 +601,17 @@ export function Sidebar() {
           </Popover>
         </div>
       </div>
+
+      {/* Delete Namespace Dialog */}
+      <DeleteNamespaceDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open)
+          if (!open) setNamespaceToDelete(null)
+        }}
+        namespaceName={namespaceToDelete || ''}
+        onDeleted={handleNamespaceDeleted}
+      />
 
       {/* Resize Handle */}
       <div
